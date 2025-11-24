@@ -6,7 +6,6 @@ services:
     container_name: opencode-web
     ports:
       - "5001:5001"
-      - "5551:5551"
     environment:
       - NODE_ENV=production
       - HOST=0.0.0.0
