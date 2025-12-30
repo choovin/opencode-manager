@@ -9,15 +9,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Search, Check, Star, Home, Globe } from "lucide-react";
+import { Loader2, Search, Check, PlugZap, Key, Star } from "lucide-react";
 import {
   getProvidersWithModels,
   formatModelName,
   formatProviderName,
 } from "@/api/providers";
 import { useModelSelection } from "@/hooks/useModelSelection";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Model, ProviderWithModels } from "@/api/providers";
+import { ApiKeyDialog } from "./ApiKeyDialog";
 
 interface ModelSelectDialogProps {
   open: boolean;
@@ -93,16 +94,17 @@ const ModelCard = memo(function ModelCard({
     return null;
   }, [model.experimental, model.status]);
 
-  const sourceBadge = useMemo(() => {
-    switch (provider.source) {
-      case "configured":
-        return <Badge variant="default" className="text-xs px-1.5 py-0 bg-yellow-500/20 text-yellow-600 border-yellow-500/30">Custom</Badge>;
-      case "local":
-        return <Badge variant="default" className="text-xs px-1.5 py-0 bg-green-500/20 text-green-600 border-green-500/30">Local</Badge>;
-      default:
-        return null;
+  const connectionBadge = useMemo(() => {
+    if (!provider.isConnected) {
+      return (
+        <Badge variant="outline" className="text-xs px-1.5 py-0 border-orange-500/30 text-orange-500">
+          <Key className="h-2.5 w-2.5 mr-0.5" />
+          Setup
+        </Badge>
+      );
     }
-  }, [provider.source]);
+    return null;
+  }, [provider.isConnected]);
 
   return (
     <div
@@ -119,7 +121,7 @@ const ModelCard = memo(function ModelCard({
             <h4 className="font-semibold text-sm truncate">
               {formatModelName(model)}
             </h4>
-            {sourceBadge}
+            {connectionBadge}
           </div>
           <p className="text-xs text-muted-foreground truncate">
             {formatProviderName(provider)}
@@ -257,9 +259,8 @@ const ModelGrid = memo(function ModelGrid({
 
 interface ProviderSidebarProps {
   groupedProviders: {
-    configured: ProviderWithModels[];
-    local: ProviderWithModels[];
-    builtin: ProviderWithModels[];
+    connected: ProviderWithModels[];
+    available: ProviderWithModels[];
   };
   selectedProvider: string;
   onSelect: (providerId: string) => void;
@@ -282,36 +283,14 @@ const ProviderSidebar = memo(function ProviderSidebar({
           All Providers
         </Button>
 
-        {groupedProviders.configured.length > 0 && (
-          <div>
-            <h3 className="text-xs font-semibold text-yellow-600 mb-2 flex items-center gap-1.5">
-              <Star className="h-3 w-3" />
-              Custom Providers
-            </h3>
-            <div className="space-y-1">
-              {groupedProviders.configured.map((provider) => (
-                <Button
-                  key={provider.id}
-                  variant={selectedProvider === provider.id ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => onSelect(provider.id)}
-                  className="w-full justify-start text-sm"
-                >
-                  {formatProviderName(provider)}
-                </Button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {groupedProviders.local.length > 0 && (
+        {groupedProviders.connected.length > 0 && (
           <div>
             <h3 className="text-xs font-semibold text-green-600 mb-2 flex items-center gap-1.5">
-              <Home className="h-3 w-3" />
-              Local Providers
+              <PlugZap className="h-3 w-3" />
+              Connected
             </h3>
             <div className="space-y-1">
-              {groupedProviders.local.map((provider) => (
+              {groupedProviders.connected.map((provider) => (
                 <Button
                   key={provider.id}
                   variant={selectedProvider === provider.id ? "secondary" : "ghost"}
@@ -326,20 +305,20 @@ const ProviderSidebar = memo(function ProviderSidebar({
           </div>
         )}
 
-        {groupedProviders.builtin.length > 0 && (
+        {groupedProviders.available.length > 0 && (
           <div>
             <h3 className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1.5">
-              <Globe className="h-3 w-3" />
-              Built-in Providers
+              <Key className="h-3 w-3" />
+              Available
             </h3>
             <div className="space-y-1">
-              {groupedProviders.builtin.map((provider) => (
+              {groupedProviders.available.map((provider) => (
                 <Button
                   key={provider.id}
                   variant={selectedProvider === provider.id ? "secondary" : "ghost"}
                   size="sm"
                   onClick={() => onSelect(provider.id)}
-                  className="w-full justify-start text-sm"
+                  className="w-full justify-start text-sm text-muted-foreground"
                 >
                   {formatProviderName(provider)}
                 </Button>
@@ -360,7 +339,11 @@ export function ModelSelectDialog({
 }: ModelSelectDialogProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedProvider, setSelectedProvider] = useState<string>("");
+  const [apiKeyDialogOpen, setApiKeyDialogOpen] = useState(false);
+  const [pendingSelection, setPendingSelection] = useState<{ providerId: string; modelId: string } | null>(null);
+  const [providerForApiKey, setProviderForApiKey] = useState<ProviderWithModels | null>(null);
 
+  const queryClient = useQueryClient();
   const { modelString, setModel, recentModels } = useModelSelection(opcodeUrl, directory);
   const currentModel = modelString || "";
 
@@ -379,17 +362,13 @@ export function ModelSelectDialog({
   }, [open]);
 
   const flatModels = useMemo((): FlatModel[] => {
-    const sourceOrder = { configured: 0, local: 1, builtin: 2 };
-    return providers
-      .slice()
-      .sort((a, b) => (sourceOrder[a.source] ?? 2) - (sourceOrder[b.source] ?? 2))
-      .flatMap((provider) =>
-        provider.models.map((model) => ({
-          model,
-          provider,
-          modelKey: `${provider.id}/${model.id}`,
-        }))
-      );
+    return providers.flatMap((provider) =>
+      provider.models.map((model) => ({
+        model,
+        provider,
+        modelKey: `${provider.id}/${model.id}`,
+      }))
+    );
   }, [providers]);
 
   const recentFlatModels = useMemo((): FlatModel[] => {
@@ -404,24 +383,27 @@ export function ModelSelectDialog({
 
   const filteredModels = useMemo(() => {
     const search = searchQuery.toLowerCase();
-    return flatModels.filter((item) => {
-      if (selectedProvider && item.provider.id !== selectedProvider) {
-        return false;
-      }
-      if (!search) return true;
-      return (
+    let filtered = flatModels;
+    
+    if (selectedProvider) {
+      filtered = filtered.filter((item) => item.provider.id === selectedProvider);
+    }
+    
+    if (search) {
+      filtered = filtered.filter((item) =>
         item.model.name.toLowerCase().includes(search) ||
         item.model.id.toLowerCase().includes(search) ||
         item.provider.name.toLowerCase().includes(search)
       );
-    });
+    }
+    
+    return filtered;
   }, [flatModels, selectedProvider, searchQuery]);
 
   const groupedProviders = useMemo(() => {
-    const configured = providers.filter(p => p.source === "configured");
-    const local = providers.filter(p => p.source === "local");
-    const builtin = providers.filter(p => p.source === "builtin");
-    return { configured, local, builtin };
+    const connected = providers.filter(p => p.isConnected);
+    const available = providers.filter(p => !p.isConnected);
+    return { connected, available };
   }, [providers]);
 
   const selectedProviderData = useMemo(
@@ -439,9 +421,38 @@ export function ModelSelectDialog({
   }, []);
 
   const handleModelSelect = useCallback((providerId: string, modelId: string) => {
+    const provider = providers.find(p => p.id === providerId);
+    
+    if (provider && !provider.isConnected) {
+      setPendingSelection({ providerId, modelId });
+      setProviderForApiKey(provider);
+      setApiKeyDialogOpen(true);
+      return;
+    }
+    
     setModel({ providerID: providerId, modelID: modelId });
     onOpenChange(false);
-  }, [setModel, onOpenChange]);
+  }, [setModel, onOpenChange, providers]);
+
+  const handleApiKeySuccess = useCallback(async () => {
+    setApiKeyDialogOpen(false);
+    await queryClient.invalidateQueries({ queryKey: ["providers-with-models"] });
+    
+    if (pendingSelection) {
+      setModel({ providerID: pendingSelection.providerId, modelID: pendingSelection.modelId });
+      setPendingSelection(null);
+      setProviderForApiKey(null);
+      onOpenChange(false);
+    }
+  }, [queryClient, pendingSelection, setModel, onOpenChange]);
+
+  const handleApiKeyDialogClose = useCallback((open: boolean) => {
+    setApiKeyDialogOpen(open);
+    if (!open) {
+      setPendingSelection(null);
+      setProviderForApiKey(null);
+    }
+  }, []);
 
   const searchResetKey = selectedProvider;
 
@@ -468,39 +479,26 @@ export function ModelSelectDialog({
                   <SelectValue placeholder="Select a provider..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {groupedProviders.configured.length > 0 && (
-                    <SelectGroup>
-                      <SelectLabel className="flex items-center gap-1.5 text-yellow-600">
-                        <Star className="h-3 w-3" />
-                        Custom Providers
-                      </SelectLabel>
-                      {groupedProviders.configured.map((provider) => (
-                        <SelectItem key={provider.id} value={provider.id}>
-                          {formatProviderName(provider)} ({provider.models.length})
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  )}
-                  {groupedProviders.local.length > 0 && (
+                  {groupedProviders.connected.length > 0 && (
                     <SelectGroup>
                       <SelectLabel className="flex items-center gap-1.5 text-green-600">
-                        <Home className="h-3 w-3" />
-                        Local Providers
+                        <PlugZap className="h-3 w-3" />
+                        Connected
                       </SelectLabel>
-                      {groupedProviders.local.map((provider) => (
+                      {groupedProviders.connected.map((provider) => (
                         <SelectItem key={provider.id} value={provider.id}>
                           {formatProviderName(provider)} ({provider.models.length})
                         </SelectItem>
                       ))}
                     </SelectGroup>
                   )}
-                  {groupedProviders.builtin.length > 0 && (
+                  {groupedProviders.available.length > 0 && (
                     <SelectGroup>
                       <SelectLabel className="flex items-center gap-1.5 text-muted-foreground">
-                        <Globe className="h-3 w-3" />
-                        Built-in Providers
+                        <Key className="h-3 w-3" />
+                        Available
                       </SelectLabel>
-                      {groupedProviders.builtin.map((provider) => (
+                      {groupedProviders.available.map((provider) => (
                         <SelectItem key={provider.id} value={provider.id}>
                           {formatProviderName(provider)} ({provider.models.length})
                         </SelectItem>
@@ -518,6 +516,7 @@ export function ModelSelectDialog({
 
             <div className="flex-1 overflow-y-auto p-3 sm:p-4">
               <ModelGrid
+                key={selectedProvider || "all"}
                 models={filteredModels}
                 currentModel={currentModel}
                 onSelect={handleModelSelect}
@@ -537,6 +536,13 @@ export function ModelSelectDialog({
           </div>
         </div>
       </DialogContent>
+
+      <ApiKeyDialog
+        open={apiKeyDialogOpen}
+        onOpenChange={handleApiKeyDialogClose}
+        provider={providerForApiKey}
+        onSuccess={handleApiKeySuccess}
+      />
     </Dialog>
   );
 }

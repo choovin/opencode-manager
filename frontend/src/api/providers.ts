@@ -98,6 +98,7 @@ export interface Provider {
   models: Record<string, Model>;
   options?: Record<string, unknown>;
   source?: ProviderSource;
+  isConnected?: boolean;
 }
 
 export interface ProviderWithModels {
@@ -108,6 +109,7 @@ export interface ProviderWithModels {
   npm?: string;
   models: Model[];
   source: ProviderSource;
+  isConnected: boolean;
 }
 
 interface ConfigProvider {
@@ -139,23 +141,21 @@ function classifyProviderSource(providerId: string, isFromConfig: boolean): Prov
   return "configured";
 }
 
-function getProviderPriority(source: ProviderSource): number {
-  switch (source) {
-    case "configured": return 1;
-    case "local": return 2;
-    case "builtin": return 3;
-    default: return 4;
-  }
+
+interface OpenCodeProviderResponse {
+  all: OpenCodeProvider[];
+  connected: string[];
+  default: Record<string, string>;
 }
 
-
-
-async function getProvidersFromOpenCodeServer(): Promise<Provider[]> {
+async function getProvidersFromOpenCodeServer(): Promise<{ providers: Provider[]; connected: string[] }> {
   try {
-    const response = await axios.get(`${API_BASE_URL}/api/opencode/provider`);
+    const response = await axios.get<OpenCodeProviderResponse>(`${API_BASE_URL}/api/opencode/provider`);
     
     if (response?.data?.all && Array.isArray(response.data.all)) {
-      return response.data.all.map((openCodeProvider: OpenCodeProvider) => {
+      const connectedSet = new Set(response.data.connected || []);
+      
+      const providers = response.data.all.map((openCodeProvider: OpenCodeProvider) => {
         const models: Record<string, Model> = {};
         
         Object.entries(openCodeProvider.models).forEach(([modelId, openCodeModel]) => {
@@ -196,21 +196,24 @@ async function getProvidersFromOpenCodeServer(): Promise<Provider[]> {
           env: openCodeProvider.env,
           models,
           options: openCodeProvider.options,
+          isConnected: connectedSet.has(openCodeProvider.id),
         };
       });
+
+      return { providers, connected: response.data.connected || [] };
     }
   } catch (error) {
     console.warn("Failed to load providers from OpenCode server", error);
   }
 
-  return [];
+  return { providers: [], connected: [] };
 }
 
-export async function getProviders(): Promise<Provider[]> {
+export async function getProviders(): Promise<{ providers: Provider[]; connected: string[] }> {
   return await getProvidersFromOpenCodeServer();
 }
 
-async function getConfiguredProviders(): Promise<ProviderWithModels[]> {
+async function getConfiguredProviders(connectedIds: Set<string>): Promise<ProviderWithModels[]> {
   try {
     const config = await settingsApi.getDefaultOpenCodeConfig();
     if (!config?.content?.provider) return [];
@@ -247,6 +250,7 @@ async function getConfiguredProviders(): Promise<ProviderWithModels[]> {
         npm: providerConfig.npm,
         models,
         source,
+        isConnected: connectedIds.has(providerId),
       });
     }
 
@@ -258,11 +262,10 @@ async function getConfiguredProviders(): Promise<ProviderWithModels[]> {
 }
 
 export async function getProvidersWithModels(): Promise<ProviderWithModels[]> {
-  const [builtinProviders, configuredProviders] = await Promise.all([
-    getProviders(),
-    getConfiguredProviders(),
-  ]);
-
+  const { providers: builtinProviders, connected } = await getProviders();
+  const connectedIds = new Set(connected);
+  
+  const configuredProviders = await getConfiguredProviders(connectedIds);
   const configuredIds = new Set(configuredProviders.map((p) => p.id));
 
   const builtinResult: ProviderWithModels[] = builtinProviders
@@ -281,15 +284,16 @@ export async function getProvidersWithModels(): Promise<ProviderWithModels[]> {
         npm: provider.npm,
         models,
         source: "builtin" as ProviderSource,
+        isConnected: provider.isConnected ?? false,
       };
     });
 
   const allProviders = [...configuredProviders, ...builtinResult];
 
   allProviders.sort((a, b) => {
-    const priorityA = getProviderPriority(a.source);
-    const priorityB = getProviderPriority(b.source);
-    if (priorityA !== priorityB) return priorityA - priorityB;
+    if (a.isConnected !== b.isConnected) {
+      return a.isConnected ? -1 : 1;
+    }
     return a.name.localeCompare(b.name);
   });
 

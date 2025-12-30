@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Loader2, Check, X, Shield } from 'lucide-react'
-import { providerCredentialsApi, getProviders, type Provider } from '@/api/providers'
+import { providerCredentialsApi, getProviders } from '@/api/providers'
 import { oauthApi, type OAuthAuthorizeResponse } from '@/api/oauth'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { OAuthAuthorizeDialog } from './OAuthAuthorizeDialog'
@@ -16,11 +16,13 @@ export function ProviderSettings() {
   const [oauthResponse, setOauthResponse] = useState<OAuthAuthorizeResponse | null>(null)
   const queryClient = useQueryClient()
 
-  const { data: providers, isLoading: providersLoading } = useQuery<Provider[]>({
+  const { data: providersData, isLoading: providersLoading } = useQuery({
     queryKey: ['providers'],
     queryFn: () => getProviders(),
     staleTime: 300000,
   })
+
+  const providers = providersData?.providers
 
   const { data: credentialsList, isLoading: credentialsLoading } = useQuery({
     queryKey: ['provider-credentials'],
