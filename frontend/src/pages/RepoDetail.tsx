@@ -76,6 +76,7 @@ export function RepoDetail() {
   const resetPermissionsMutation = useMutation({
     mutationFn: () => resetRepoPermissions(repoId),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["opencode", "sessions", opcodeUrl, repoDirectory] });
       showToast.success("Permissions reset successfully");
       setResetPermissionsOpen(false);
     },
