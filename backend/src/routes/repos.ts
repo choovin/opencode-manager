@@ -9,6 +9,7 @@ import * as archiveService from '../services/archive'
 import { SettingsService } from '../services/settings'
 import { writeFileContent } from '../services/file-operations'
 import { opencodeServerManager } from '../services/opencode-single-server'
+import { proxyToOpenCodeWithDirectory } from '../services/proxy'
 import { logger } from '../utils/logger'
 import { getErrorMessage, getStatusCode } from '../utils/error-utils'
 import { getOpenCodeConfigFilePath, getReposPath } from '@opencode-manager/shared/config/env'
@@ -356,6 +357,35 @@ app.get('/', async (c) => {
       })
     } catch (error: unknown) {
       logger.error('Failed to create repo archive:', error)
+      return c.json({ error: getErrorMessage(error) }, 500)
+    }
+  })
+
+  app.post('/:id/reset-permissions', async (c) => {
+    try {
+      const id = parseInt(c.req.param('id'))
+      const repo = db.getRepoById(database, id)
+      
+      if (!repo) {
+        return c.json({ error: 'Repo not found' }, 404)
+      }
+      
+      const response = await proxyToOpenCodeWithDirectory(
+        '/instance/dispose',
+        'POST',
+        repo.fullPath
+      )
+      
+      if (!response.ok) {
+        const errorText = await response.text()
+        logger.error(`Failed to reset permissions for repo ${id}:`, errorText)
+        return c.json({ error: 'Failed to reset permissions' }, 500)
+      }
+      
+      logger.info(`Reset permissions for repo ${id} (${repo.fullPath})`)
+      return c.json({ success: true })
+    } catch (error: unknown) {
+      logger.error('Failed to reset permissions:', error)
       return c.json({ error: getErrorMessage(error) }, 500)
     }
   })

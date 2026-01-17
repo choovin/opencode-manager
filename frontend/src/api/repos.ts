@@ -201,3 +201,14 @@ export async function updateRepoOrder(order: number[]): Promise<void> {
     throw new Error(error.error || 'Failed to update repo order')
   }
 }
+
+export async function resetRepoPermissions(id: number): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/repos/${id}/reset-permissions`, {
+    method: 'POST',
+  })
+
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.error || 'Failed to reset permissions')
+  }
+}

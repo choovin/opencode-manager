@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { getRepo } from "@/api/repos";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+import { getRepo, resetRepoPermissions } from "@/api/repos";
 import { SessionList } from "@/components/session/SessionList";
 import { FileBrowserSheet } from "@/components/file-browser/FileBrowserSheet";
 import { Header } from "@/components/ui/header";
@@ -15,8 +15,17 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { BranchSwitcher } from "@/components/repo/BranchSwitcher";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { Plug, FolderOpen, Plus, GitBranch, Loader2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Plug, FolderOpen, Plus, GitBranch, Loader2, ShieldOff } from "lucide-react";
 import { PendingActionsGroup } from "@/components/notifications/PendingActionsGroup";
+import { showToast } from "@/lib/toast";
 
 export function RepoDetail() {
   const { id } = useParams<{ id: string }>();
@@ -26,6 +35,7 @@ export function RepoDetail() {
   const [fileBrowserOpen, setFileBrowserOpen] = useState(false);
   const [switchConfigOpen, setSwitchConfigOpen] = useState(false);
   const [mcpDialogOpen, setMcpDialogOpen] = useState(false);
+  const [resetPermissionsOpen, setResetPermissionsOpen] = useState(false);
   const pageRef = useRef<HTMLDivElement>(null);
   
   const handleSwipeBack = useCallback(() => {
@@ -62,6 +72,17 @@ export function RepoDetail() {
   useSSE(opcodeUrl, repoDirectory);
 
   const createSessionMutation = useCreateSession(opcodeUrl, repoDirectory);
+
+  const resetPermissionsMutation = useMutation({
+    mutationFn: () => resetRepoPermissions(repoId),
+    onSuccess: () => {
+      showToast.success("Permissions reset successfully");
+      setResetPermissionsOpen(false);
+    },
+    onError: () => {
+      showToast.error("Failed to reset permissions");
+    },
+  });
 
   const handleCreateSession = async (options?: {
     agentSlug?: string;
@@ -163,6 +184,15 @@ export function RepoDetail() {
           <FolderOpen className="w-4 h-4 sm:mr-2" />
           <span className="hidden sm:inline">Files</span>
         </Button>
+        <Button
+          variant="outline"
+          onClick={() => setResetPermissionsOpen(true)}
+          size="sm"
+          className="hidden lg:flex text-foreground border-border hover:bg-accent transition-all duration-200 hover:scale-105"
+        >
+          <ShieldOff className="w-4 h-4 sm:mr-2" />
+          <span className="hidden sm:inline">Reset Permissions</span>
+        </Button>
         <Header.MobileDropdown>
           {!isWorktree && currentBranch && (
             <>
@@ -184,6 +214,9 @@ export function RepoDetail() {
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => setFileBrowserOpen(true)}>
             <FolderOpen className="w-4 h-4 mr-2" /> Files
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setResetPermissionsOpen(true)}>
+            <ShieldOff className="w-4 h-4 mr-2" /> Reset Permissions
           </DropdownMenuItem>
         </Header.MobileDropdown>
         <Button
@@ -236,6 +269,41 @@ export function RepoDetail() {
             }}
           />
         )}
+
+      <Dialog open={resetPermissionsOpen} onOpenChange={setResetPermissionsOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reset Permissions</DialogTitle>
+            <DialogDescription>
+              This will clear all "Allow Always" permissions for this repository.
+              You will be prompted again for permission when opencode needs to perform actions like running commands or editing files.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setResetPermissionsOpen(false)}
+              disabled={resetPermissionsMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => resetPermissionsMutation.mutate()}
+              disabled={resetPermissionsMutation.isPending}
+            >
+              {resetPermissionsMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Resetting...
+                </>
+              ) : (
+                "Reset Permissions"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
