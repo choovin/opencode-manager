@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.4] - 2026-01-24
+
+### Features
+- Add OpenCode version selection dialog with version fetching from GitHub API
+- Add endpoint to fetch available OpenCode versions
+- Add endpoint to install and switch OpenCode versions
+- Improve agent configuration management with version control UI
+
+### Bug Fixes
+- Agent configuration changes now trigger OpenCode server restart instead of live config patch
+- Fix Dockerfile to use latest pnpm version instead of pinned 9.15.0
+
+### Other
 ## [0.7.2] - 2026-01-23
 
 ### Bug Fixes

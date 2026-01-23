@@ -18,6 +18,7 @@ import { SquareFill } from '@/components/ui/square-fill'
 import { MentionSuggestions, type MentionItem } from './MentionSuggestions'
 import { SessionStatusIndicator } from '@/components/ui/session-status-indicator'
 import { ModelQuickSelect } from '@/components/model/ModelQuickSelect'
+import { AgentQuickSelect } from '@/components/agent/AgentQuickSelect'
 import { detectMentionTrigger, parsePromptToParts, getFilename, filterAgentsByQuery } from '@/lib/promptParser'
 
 
@@ -346,9 +347,8 @@ export const PromptInput = forwardRef<PromptInputHandle, PromptInputProps>(funct
     setMentionRange(null)
   }
 
-  const handleModeToggle = () => {
-    const newMode = currentMode === 'plan' ? 'build' : 'plan'
-    setLocalMode(newMode)
+  const handleAgentChange = (agent: string) => {
+    setLocalMode(agent)
   }
 
   const addImageAttachment = (file: File) => {
@@ -682,9 +682,6 @@ if (isIOS && isSecureContext && navigator.clipboard && navigator.clipboard.read)
 
   const sessionAgent = useSessionAgent(opcodeUrl, sessionID, directory)
   const currentMode = localMode ?? sessionAgent.agent
-  const modeColor = currentMode === 'plan' ? 'text-yellow-600 dark:text-yellow-500' : 'text-green-600 dark:text-green-500'
-  const modeBg = currentMode === 'plan' ? 'bg-yellow-500/20 border-yellow-400 hover:bg-yellow-500/30 hover:border-yellow-300' : 'bg-green-500/20 border-green-400 hover:bg-green-500/30 hover:border-green-300'
-  const modeShadow = currentMode === 'plan' ? 'shadow-yellow-500/20 hover:shadow-yellow-500/30' : 'shadow-green-500/20 hover:shadow-green-500/30'
 
 const { model, modelString } = useModelSelection(opcodeUrl, directory)
   const currentModel = modelString || ''
@@ -777,17 +774,14 @@ return (
 
       <div className="flex gap-1.5 md:gap-2 items-center justify-between">
         <div className="flex gap-1.5 md:gap-2 items-center">
-           <button
-            data-toggle-mode
-            onClick={handleModeToggle}
-            className={`px-3 md:px-3.5 py-1 h-[36px] rounded-lg text-sm font-medium border w-14 flex items-center justify-center transition-all duration-200 active:scale-95 hover:scale-105 shadow-md ${
-              isBashMode 
-                ? 'bg-purple-500/20 border-purple-400 text-purple-700 dark:text-purple-300 shadow-purple-500/20 hover:shadow-purple-500/30' 
-                : `${modeBg} ${modeColor} ${modeShadow}`
-            }`}
-          >
-            {isBashMode ? 'BASH' : currentMode.toUpperCase()} 
-          </button>
+          <AgentQuickSelect
+            opcodeUrl={opcodeUrl}
+            directory={directory}
+            currentAgent={currentMode}
+            onAgentChange={handleAgentChange}
+            isBashMode={isBashMode}
+            disabled={disabled}
+          />
           {hasActiveStream ? (
               <div className="px-2.5 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm font-medium text-muted-foreground max-w-[120px] md:max-w-[180px]">
                 <SessionStatusIndicator sessionID={sessionID} />
