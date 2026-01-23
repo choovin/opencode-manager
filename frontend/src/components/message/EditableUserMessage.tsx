@@ -27,6 +27,7 @@ export const EditableUserMessage = memo(function EditableUserMessage({
 }: EditableUserMessageProps) {
   const [editedContent, setEditedContent] = useState(content)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const isMobile = useMobile()
   const refreshMessage = useRefreshMessage({ opcodeUrl, sessionId, directory })
   const setIsEditingMessage = useUIState((state) => state.setIsEditingMessage)
 
@@ -97,7 +98,7 @@ export const EditableUserMessage = memo(function EditableUserMessage({
           Press <kbd className="px-1 py-0.5 rounded bg-muted text-xs">Cmd+Enter</kbd> to send, <kbd className="px-1 py-0.5 rounded bg-muted text-xs">Esc</kbd> to cancel
         </span>
         
-        <div className="flex items-center gap-2">
+        <div className={`flex items-center ${isMobile ? 'gap-3' : 'gap-2'}`}>
           <button
             onClick={onCancel}
             disabled={refreshMessage.isPending}

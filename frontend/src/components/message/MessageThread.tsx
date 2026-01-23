@@ -1,6 +1,6 @@
 import { memo, useMemo, useState, useCallback, useEffect } from 'react'
+import { Pencil } from 'lucide-react'
 import { MessagePart } from './MessagePart'
-import { MessageActionButtons } from './MessageActionButtons'
 import { UserMessageActionButtons } from './UserMessageActionButtons'
 import { EditableUserMessage, ClickableUserMessage } from './EditableUserMessage'
 import { SessionTodoDisplay } from './SessionTodoDisplay'
@@ -191,6 +191,15 @@ const state = latestTodoPart.state
                       {new Date(msg.info.time.created).toLocaleTimeString()}
                     </span>
                   )}
+                  {canEditUserMessage && nextAssistantMessage && (
+                    <button
+                      onClick={() => handleStartEditUserMessage(msg.info.id, nextAssistantMessage.info.id)}
+                      className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                      title="Edit message"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                   {isQueued && (
                     <span className="text-xs font-semibold bg-amber-500 text-amber-950 px-1.5 py-0.5 rounded">
                       QUEUED
@@ -198,16 +207,7 @@ const state = latestTodoPart.state
                   )}
                 </div>
                 
-                {msg.info.role === 'assistant' && !streaming && !isSessionBusy && !isSessionInRetry(sessionStatus) && (
-                  <MessageActionButtons
-                    opcodeUrl={opcodeUrl}
-                    sessionId={sessionID}
-                    directory={directory}
-                    message={msg}
-                  />
-                )}
-                
-                {canUndoUserMessage && (
+                {msg.info.role === 'user' && canUndoUserMessage && (
                   <UserMessageActionButtons
                     opcodeUrl={opcodeUrl}
                     sessionId={sessionID}
@@ -235,13 +235,13 @@ const state = latestTodoPart.state
                   <ClickableUserMessage
                     content={messageTextContent}
                     onClick={() => handleStartEditUserMessage(msg.info.id, nextAssistantMessage.info.id)}
-                    isEditable={true}
+                    isEditable={false}
                   />
                 ) : (
                   msg.parts.map((part, partIndex) => (
                     <div key={`${msg.info.id}-${part.id}-${partIndex}`}>
-                      <MessagePart 
-                        part={part} 
+                      <MessagePart
+                        part={part}
                         role={msg.info.role}
                         allParts={msg.parts}
                         partIndex={partIndex}
