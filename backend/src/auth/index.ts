@@ -32,6 +32,7 @@ export function createAuth(db: Database) {
   const auth = betterAuth({
     database: db,
     secret: ENV.AUTH.SECRET,
+    trustedOrigins: ENV.AUTH.TRUSTED_ORIGINS.split(',').map((o: string) => o.trim()),
     emailAndPassword: {
       enabled: true,
       minPasswordLength: 8,
