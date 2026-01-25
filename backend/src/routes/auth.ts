@@ -3,6 +3,7 @@ import type { AuthInstance } from '../auth'
 import { Database } from 'bun:sqlite'
 import { ENV } from '@opencode-manager/shared/config/env'
 import { logger } from '../utils/logger'
+import { hashPassword } from 'better-auth/crypto'
 
 export function createAuthRoutes(auth: AuthInstance, _db: Database) {
   const app = new Hono()
@@ -38,10 +39,7 @@ export async function syncAdminFromEnv(auth: AuthInstance, db: Database): Promis
 
   if (existingUser) {
     if (ENV.AUTH.ADMIN_PASSWORD_RESET) {
-      const hashedPassword = await Bun.password.hash(adminPassword, {
-        algorithm: 'bcrypt',
-        cost: 10,
-      })
+      const hashedPassword = await hashPassword(adminPassword)
       db.prepare('UPDATE "account" SET password = ? WHERE "userId" = ? AND "providerId" = ?').run(
         hashedPassword,
         existingUser.id,
