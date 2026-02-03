@@ -239,7 +239,7 @@ export function TTSSettings() {
   }
   
   return (
-    <div className="bg-card border-t pt-4">
+    <div className="bg-card border border-border rounded-lg p-6">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-lg font-semibold text-foreground">Text-to-Speech</h2>
         {/* Show auto-save status instead of save button */}

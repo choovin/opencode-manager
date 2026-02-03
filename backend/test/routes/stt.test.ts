@@ -65,7 +65,6 @@ describe('STT Routes', () => {
           endpoint: 'https://api.openai.com',
           model: 'whisper-1',
           language: 'en-US',
-          continuous: false,
         },
       },
     })
@@ -198,34 +197,6 @@ describe('STT Routes', () => {
       expect(json.error).toBe('External STT provider is not selected')
     })
 
-    it('should reject when API key is missing', async () => {
-      mockGetSettings.mockReturnValue({
-        preferences: {
-          stt: {
-            enabled: true,
-            provider: 'external',
-            apiKey: '',
-            endpoint: 'https://api.openai.com',
-            model: 'whisper-1',
-          },
-        },
-      })
-
-      const audioBlob = new Blob(['fake audio'], { type: 'audio/webm' })
-      const formData = new FormData()
-      formData.append('audio', audioBlob, 'test.webm')
-
-      const req = new Request('http://localhost/transcribe?userId=test', {
-        method: 'POST',
-        body: formData,
-      })
-      const res = await sttApp.fetch(req)
-      const json = await res.json() as Record<string, unknown>
-
-      expect(res.status).toBe(400)
-      expect(json.error).toBe('STT API key is not configured')
-    })
-
     it('should reject when endpoint is missing', async () => {
       mockGetSettings.mockReturnValue({
         preferences: {
@@ -327,6 +298,94 @@ describe('STT Routes', () => {
       expect(res.status).toBe(401)
       expect(json.error).toBe('STT API request failed')
       expect(json.details).toBe('Invalid API key')
+
+      globalThis.fetch = originalFetch
+    })
+
+    it('should handle response with missing text field', async () => {
+      const originalFetch = globalThis.fetch
+      mockGetSettings.mockReturnValue({
+        preferences: {
+          stt: {
+            enabled: true,
+            provider: 'external',
+            apiKey: 'test-api-key',
+            endpoint: 'https://api.openai.com',
+            model: 'whisper-1',
+            language: 'en-US',
+          },
+        },
+      })
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ error: 'some error', text: undefined }),
+      })
+      globalThis.fetch = mockFetch as unknown as typeof fetch
+
+      const audioBlob = new Blob(['fake audio data'], { type: 'audio/webm' })
+      const formData = new FormData()
+      formData.append('audio', audioBlob, 'audio.webm')
+
+      const req = new Request('http://localhost/transcribe?userId=test', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const res = await sttApp.fetch(req)
+      const json = await res.json() as Record<string, unknown>
+
+      expect(res.status).toBe(500)
+      expect(json.error).toBe('STT API returned invalid response')
+      expect(json.details).toContain('Response missing text field')
+
+      globalThis.fetch = originalFetch
+    })
+
+    it('should successfully transcribe without API key', async () => {
+      const originalFetch = globalThis.fetch
+      mockGetSettings.mockReturnValue({
+        preferences: {
+          stt: {
+            enabled: true,
+            provider: 'external',
+            apiKey: '',
+            endpoint: 'https://api.openai.com',
+            model: 'whisper-1',
+            language: 'en-US',
+          },
+        },
+      })
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ text: 'Hello, world!' }),
+      })
+      globalThis.fetch = mockFetch as unknown as typeof fetch
+
+      const audioBlob = new Blob(['fake audio data'], { type: 'audio/webm' })
+      const formData = new FormData()
+      formData.append('audio', audioBlob, 'audio.webm')
+
+      const req = new Request('http://localhost/transcribe?userId=test', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const res = await sttApp.fetch(req)
+      const json = await res.json() as Record<string, unknown>
+
+      expect(res.status).toBe(200)
+      expect(json.text).toBe('Hello, world!')
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://api.openai.com/v1/audio/transcriptions',
+        expect.objectContaining({
+          headers: expect.not.objectContaining({
+            'Authorization': expect.any(String),
+          }),
+        })
+      )
 
       globalThis.fetch = originalFetch
     })

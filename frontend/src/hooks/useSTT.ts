@@ -201,7 +201,7 @@ export function useSTT(userId = 'default') {
         audioRecorder.current = new AudioRecorder()
         setupAudioRecorder(audioRecorder.current)
       }
-      
+
       try {
         setIsProcessing(true)
         await audioRecorder.current.start()
@@ -214,7 +214,6 @@ export function useSTT(userId = 'default') {
     } else {
       const options: SpeechRecognitionOptions = {
         language: config.language,
-        continuous: config.continuous,
         interimResults: true,
         maxAlternatives: 1,
       }
@@ -228,7 +227,7 @@ export function useSTT(userId = 'default') {
         setError(err instanceof Error ? err.message : 'Failed to start recording')
       }
     }
-  }, [isSupported, isEnabled, isExternalProvider, config.language, config.continuous, setupAudioRecorder])
+  }, [isSupported, isEnabled, isExternalProvider, config.language, setupAudioRecorder])
 
   const stopRecording = useCallback(() => {
     if (isExternalProvider && audioRecorder.current) {
@@ -246,12 +245,12 @@ export function useSTT(userId = 'default') {
     } else {
       recognizer.current.abort()
     }
-    
+
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
       abortControllerRef.current = null
     }
-    
+
     setTranscript('')
     setInterimTranscript('')
     setIsRecording(false)

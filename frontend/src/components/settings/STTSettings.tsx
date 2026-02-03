@@ -20,7 +20,6 @@ const sttFormSchema = z.object({
   apiKey: z.string(),
   model: z.string(),
   language: z.string(),
-  continuous: z.boolean(),
 }).superRefine((data, ctx) => {
   if (!data.enabled) return
 
@@ -30,13 +29,6 @@ const sttFormSchema = z.object({
         code: z.ZodIssueCode.custom,
         path: ['endpoint'],
         message: 'Endpoint is required for external provider',
-      })
-    }
-    if (!data.apiKey || data.apiKey.trim().length === 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['apiKey'],
-        message: 'API key is required for external provider',
       })
     }
   }
@@ -73,19 +65,18 @@ export function STTSettings() {
   const watchEnabled = form.watch('enabled')
   const watchProvider = form.watch('provider')
   const watchLanguage = form.watch('language')
-  const watchContinuous = form.watch('continuous')
   const watchEndpoint = form.watch('endpoint')
   const watchApiKey = form.watch('apiKey')
   const watchModel = form.watch('model')
 
   const fetchModels = async (forceRefresh = false) => {
-    if (!watchEndpoint || !watchApiKey) return
-    
+    if (!watchEndpoint) return
+
     setIsLoadingModels(true)
     try {
       const response = await sttApi.getModels('default', forceRefresh)
       setAvailableModels(response.models.length > 0 ? response.models : ['whisper-1'])
-      
+
       if (!watchModel && response.models.length > 0) {
         setValue('model', response.models[0])
       }
@@ -97,14 +88,14 @@ export function STTSettings() {
   }
 
   useEffect(() => {
-    if (watchProvider === 'external' && watchEndpoint && watchApiKey) {
+    if (watchProvider === 'external' && watchEndpoint) {
       const timer = setTimeout(() => {
         fetchModels()
       }, 500)
       return () => clearTimeout(timer)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [watchProvider, watchEndpoint, watchApiKey])
+  }, [watchProvider, watchEndpoint])
 
   const handleTest = async () => {
     if (isTesting || isRecording) {
@@ -157,9 +148,8 @@ export function STTSettings() {
         apiKey: sttPrefs.apiKey ?? DEFAULT_STT_CONFIG.apiKey,
         model: sttPrefs.model ?? 'whisper-1',
         language: sttPrefs.language ?? DEFAULT_STT_CONFIG.language,
-        continuous: sttPrefs.continuous ?? DEFAULT_STT_CONFIG.continuous,
       })
-      
+
       if (sttPrefs.availableModels && sttPrefs.availableModels.length > 0) {
         setAvailableModels(sttPrefs.availableModels)
       }
@@ -178,14 +168,14 @@ export function STTSettings() {
     }, 800)
 
     return () => clearTimeout(timer)
-  }, [watchEnabled, watchProvider, watchLanguage, watchContinuous, watchEndpoint, watchApiKey, watchModel, isDirty, isValid, getValues, updateSettings])
+  }, [watchEnabled, watchProvider, watchLanguage, watchEndpoint, watchApiKey, watchModel, isDirty, isValid, getValues, updateSettings])
 
   const canTestBuiltin = watchEnabled && watchProvider === 'builtin' && isWebSpeechAvailable
-  const canTestExternal = watchEnabled && watchProvider === 'external' && watchEndpoint && watchApiKey
+  const canTestExternal = watchEnabled && watchProvider === 'external' && watchEndpoint
   const canTest = canTestBuiltin || canTestExternal
 
   return (
-    <div className="bg-card border-t pt-4">
+    <div className="bg-card border border-border rounded-lg p-6">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-lg font-semibold text-foreground">Speech-to-Text</h2>
         <div className="flex items-center gap-2 text-sm">
@@ -308,7 +298,7 @@ export function STTSettings() {
                           </div>
                         </FormControl>
                         <FormDescription>
-                          Your API key for the speech-to-text service
+                          Your API key for the speech-to-text service (optional for some servers)
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -325,7 +315,7 @@ export function STTSettings() {
                           <button
                             type="button"
                             onClick={() => fetchModels(true)}
-                            disabled={isLoadingModels || !watchEndpoint || !watchApiKey}
+                            disabled={isLoadingModels || !watchEndpoint}
                             className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 disabled:opacity-50"
                           >
                             <RefreshCw className={`h-3 w-3 ${isLoadingModels ? 'animate-spin' : ''}`} />
@@ -380,28 +370,6 @@ export function STTSettings() {
                           Select the language for speech recognition
                         </FormDescription>
                         <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="continuous"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-center justify-between rounded-lg border border-border p-4">
-                        <div className="space-y-0.5">
-                          <FormLabel className="text-base">Continuous Mode</FormLabel>
-                          <FormDescription>
-                            Keep listening after a pause (experimental)
-                          </FormDescription>
-                        </div>
-                        <FormControl>
-                          <Switch
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                            disabled={!isWebSpeechAvailable}
-                          />
-                        </FormControl>
                       </FormItem>
                     )}
                   />

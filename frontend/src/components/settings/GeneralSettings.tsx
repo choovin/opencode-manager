@@ -3,8 +3,6 @@ import { Loader2 } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { TTSSettings } from './TTSSettings'
-import { STTSettings } from './STTSettings'
 
 export function GeneralSettings() {
   const { preferences, isLoading, updateSettings, isUpdating } = useSettings()
@@ -104,14 +102,6 @@ export function GeneralSettings() {
             <span>Saving...</span>
           </div>
         )}
-      </div>
-
-      <div className="mt-6">
-        <TTSSettings />
-      </div>
-
-      <div className="mt-6">
-        <STTSettings />
       </div>
     </div>
   )

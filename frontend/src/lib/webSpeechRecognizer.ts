@@ -1,7 +1,3 @@
-/**
- * Web Speech API recognizer - Browser-native STT without external dependencies
- */
-
 export interface SpeechRecognitionResult {
   transcript: string;
   isFinal: boolean;
@@ -10,7 +6,6 @@ export interface SpeechRecognitionResult {
 
 export interface SpeechRecognitionOptions {
   language?: string;
-  continuous?: boolean;
   interimResults?: boolean;
   maxAlternatives?: number;
 }
@@ -152,11 +147,9 @@ export class WebSpeechRecognizer {
 
       this.recognition.onend = () => {
         this.isListening = false;
-
         if (this.state !== 'error') {
           this.state = 'idle';
         }
-
         this.onEndCallbacks.forEach((cb) => cb());
       };
     }
@@ -191,10 +184,6 @@ export class WebSpeechRecognizer {
         this.recognition.lang = options.language;
       }
 
-      if (typeof options.continuous === 'boolean') {
-        this.recognition.continuous = options.continuous;
-      }
-
       if (typeof options.interimResults === 'boolean') {
         this.recognition.interimResults = options.interimResults;
       }
@@ -220,6 +209,8 @@ export class WebSpeechRecognizer {
         this.recognition.start();
       } catch (error) {
         this.state = 'error';
+        this.onStartCallbacks = this.onStartCallbacks.filter(cb => cb !== onStartOnce);
+        this.onErrorCallbacks = this.onErrorCallbacks.filter(cb => cb !== onErrorOnce);
         reject(error || new Error('Failed to start recognition'));
       }
     });
@@ -241,12 +232,13 @@ export class WebSpeechRecognizer {
       try {
         this.recognition.abort();
       } catch {
-        // Ignore abort errors
+        this.state = 'idle';
+        this.isListening = false;
       }
-      this.state = 'idle';
-      this.isListening = false;
-      this.finalTranscript = '';
     }
+    this.state = 'idle';
+    this.isListening = false;
+    this.finalTranscript = '';
   }
 
   isCurrentlyListening(): boolean {

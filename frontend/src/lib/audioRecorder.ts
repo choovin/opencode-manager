@@ -1,36 +1,85 @@
 export type AudioRecorderState = 'idle' | 'recording' | 'stopped' | 'error'
 
 export interface AudioRecorderOptions {
-  mimeType?: string
-  audioBitsPerSecond?: number
+  sampleRate?: number
+  channelCount?: number
 }
 
 const DEFAULT_OPTIONS: AudioRecorderOptions = {
-  mimeType: 'audio/webm;codecs=opus',
-  audioBitsPerSecond: 128000,
+  sampleRate: 16000,
+  channelCount: 1,
 }
 
-function getSupportedMimeType(): string {
-  const mimeTypes = [
-    'audio/webm;codecs=opus',
-    'audio/webm',
-    'audio/ogg;codecs=opus',
-    'audio/mp4',
-  ]
+function encodeWAV(audioBuffer: AudioBuffer): Blob {
+  const numberOfChannels = audioBuffer.numberOfChannels
+  const sampleRate = audioBuffer.sampleRate
+  const format = 1
+  const bitDepth = 16
 
-  for (const mimeType of mimeTypes) {
-    if (MediaRecorder.isTypeSupported(mimeType)) {
-      return mimeType
+  const channelData: Float32Array[] = []
+
+  for (let i = 0; i < numberOfChannels; i++) {
+    channelData.push(audioBuffer.getChannelData(i))
+  }
+
+  const interleaved = interleave(channelData)
+  const dataLength = interleaved.length * (bitDepth / 8)
+  const buffer = new ArrayBuffer(44 + dataLength)
+  const view = new DataView(buffer)
+
+  writeString(view, 0, 'RIFF')
+  view.setUint32(4, 36 + dataLength, true)
+  writeString(view, 8, 'WAVE')
+  writeString(view, 12, 'fmt ')
+  view.setUint32(16, 16, true)
+  view.setUint16(20, format, true)
+  view.setUint16(22, numberOfChannels, true)
+  view.setUint32(24, sampleRate, true)
+  view.setUint32(28, sampleRate * numberOfChannels * (bitDepth / 8), true)
+  view.setUint16(32, numberOfChannels * (bitDepth / 8), true)
+  view.setUint16(34, bitDepth, true)
+  writeString(view, 36, 'data')
+  view.setUint32(40, dataLength, true)
+
+  floatTo16BitPCM(view, 44, interleaved)
+
+  return new Blob([view], { type: 'audio/wav' })
+}
+
+function interleave(channelData: Float32Array[]): Float32Array {
+  const length = channelData[0].length * channelData.length
+  const result = new Float32Array(length)
+  let offset = 0
+
+  for (let i = 0; i < channelData[0].length; i++) {
+    for (let channel = 0; channel < channelData.length; channel++) {
+      result[offset++] = channelData[channel][i]
     }
   }
 
-  return 'audio/webm'
+  return result
+}
+
+function writeString(view: DataView, offset: number, string: string): void {
+  for (let i = 0; i < string.length; i++) {
+    view.setUint8(offset + i, string.charCodeAt(i))
+  }
+}
+
+function floatTo16BitPCM(view: DataView, offset: number, input: Float32Array): void {
+  for (let i = 0; i < input.length; i++, offset += 2) {
+    const s = Math.max(-1, Math.min(1, input[i]))
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true)
+  }
 }
 
 export class AudioRecorder {
-  private mediaRecorder: MediaRecorder | null = null
-  private audioChunks: Blob[] = []
-  private stream: MediaStream | null = null
+  private audioContext: AudioContext | null = null
+  private mediaStream: MediaStream | null = null
+  private source: MediaStreamAudioSourceNode | null = null
+  private processor: ScriptProcessorNode | null = null
+  private audioBuffer: Float32Array | null = null
+  private recordingLength: number = 0
   private state: AudioRecorderState = 'idle'
   private options: AudioRecorderOptions
   private isAborted: boolean = false
@@ -49,7 +98,7 @@ export class AudioRecorder {
       navigator.mediaDevices &&
       typeof navigator.mediaDevices.getUserMedia === 'function' &&
       typeof window !== 'undefined' &&
-      typeof window.MediaRecorder === 'function'
+      typeof window.AudioContext !== 'undefined'
     )
   }
 
@@ -102,10 +151,10 @@ export class AudioRecorder {
     }
 
     try {
-      this.audioChunks = []
       this.isAborted = false
-      
-      this.stream = await navigator.mediaDevices.getUserMedia({
+      this.recordingLength = 0
+
+      this.mediaStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
@@ -113,39 +162,37 @@ export class AudioRecorder {
         },
       })
 
-      const mimeType = getSupportedMimeType()
-      this.mediaRecorder = new MediaRecorder(this.stream, {
-        mimeType,
-        audioBitsPerSecond: this.options.audioBitsPerSecond,
+      this.audioContext = new AudioContext({
+        sampleRate: this.options.sampleRate,
       })
 
-      this.mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          this.audioChunks.push(event.data)
+      this.source = this.audioContext.createMediaStreamSource(this.mediaStream)
+
+      const bufferSize = 4096
+      this.processor = this.audioContext.createScriptProcessor(bufferSize, 1, 1)
+
+      this.audioBuffer = new Float32Array(0)
+
+      this.processor.onaudioprocess = (e) => {
+        if (this.audioBuffer) {
+          const inputData = e.inputBuffer.getChannelData(0)
+          const newLength = this.recordingLength + inputData.length
+          const newBuffer = new Float32Array(newLength)
+          newBuffer.set(this.audioBuffer, 0)
+          newBuffer.set(inputData, this.recordingLength)
+          this.audioBuffer = newBuffer
+          this.recordingLength = newLength
         }
       }
 
-      this.mediaRecorder.onstop = () => {
-        if (!this.isAborted) {
-          const mimeType = this.mediaRecorder?.mimeType || 'audio/webm'
-          const audioBlob = new Blob(this.audioChunks, { type: mimeType })
-          this.onDataAvailable?.(audioBlob)
-          this.setState('stopped')
-        }
-        this.cleanup()
-      }
+      this.source.connect(this.processor)
+      this.processor.connect(this.audioContext.destination)
 
-      this.mediaRecorder.onerror = () => {
-        this.setState('error')
-        this.onError?.('Recording error occurred')
-        this.cleanup()
-      }
-
-      this.mediaRecorder.start(100)
       this.setState('recording')
     } catch (error) {
       this.setState('error')
-      
+      this.cleanup()
+
       if (error instanceof DOMException) {
         if (error.name === 'NotAllowedError') {
           this.onError?.('Microphone permission denied')
@@ -157,40 +204,92 @@ export class AudioRecorder {
       } else {
         this.onError?.('Failed to start recording')
       }
-      
+
       throw error
     }
   }
 
   stop(): void {
-    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
-      this.mediaRecorder.stop()
+    if (this.processor) {
+      this.processRecording()
     }
+    this.cleanup()
+    this.setState('stopped')
   }
 
   abort(): void {
     this.isAborted = true
-    this.audioChunks = []
-    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
-      this.mediaRecorder.stop()
-    }
+    this.audioBuffer = null
+    this.recordingLength = 0
+    this.cleanup()
     this.setState('idle')
   }
 
-  private cleanup(): void {
-    if (this.stream) {
-      this.stream.getTracks().forEach(track => track.stop())
-      this.stream = null
+  private processRecording(): void {
+    if (this.isAborted || !this.audioBuffer || this.recordingLength === 0) {
+      return
     }
-    this.mediaRecorder = null
+
+    try {
+      const audioBuffer = this.audioContext!.createBuffer(
+        1,
+        this.recordingLength,
+        this.audioContext!.sampleRate
+      )
+
+      const channelData = new Float32Array(this.recordingLength)
+      channelData.set(this.audioBuffer!.subarray(0, this.recordingLength))
+      audioBuffer.copyToChannel(channelData, 0)
+
+      const wavBlob = encodeWAV(audioBuffer)
+      this.onDataAvailable?.(wavBlob)
+    } catch {
+      this.onError?.('Failed to process recording')
+      this.setState('error')
+    }
+  }
+
+  private cleanup(): void {
+    if (this.processor) {
+      this.processor.disconnect()
+      this.processor = null
+    }
+
+    if (this.source) {
+      this.source.disconnect()
+      this.source = null
+    }
+
+    if (this.audioContext && this.audioContext.state !== 'closed') {
+      this.audioContext.close()
+      this.audioContext = null
+    }
+
+    if (this.mediaStream) {
+      this.mediaStream.getTracks().forEach(track => track.stop())
+      this.mediaStream = null
+    }
   }
 
   getRecordingBlob(): Blob | null {
-    if (this.audioChunks.length === 0) {
+    if (!this.audioContext || !this.audioBuffer || this.recordingLength === 0) {
       return null
     }
-    const mimeType = this.mediaRecorder?.mimeType || 'audio/webm'
-    return new Blob(this.audioChunks, { type: mimeType })
+
+    try {
+      const audioBuffer = this.audioContext.createBuffer(
+        1,
+        this.recordingLength,
+        this.audioContext.sampleRate
+      )
+
+      const channelData = new Float32Array(this.recordingLength)
+      channelData.set(this.audioBuffer.subarray(0, this.recordingLength))
+      audioBuffer.copyToChannel(channelData, 0)
+      return encodeWAV(audioBuffer)
+    } catch {
+      return null
+    }
   }
 }
 

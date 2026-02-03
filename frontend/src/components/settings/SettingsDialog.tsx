@@ -5,9 +5,10 @@ import { KeyboardShortcuts } from '@/components/settings/KeyboardShortcuts'
 import { OpenCodeConfigManager } from '@/components/settings/OpenCodeConfigManager'
 import { ProviderSettings } from '@/components/settings/ProviderSettings'
 import { AccountSettings } from '@/components/settings/AccountSettings'
+import { VoiceSettings } from '@/components/settings/VoiceSettings'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Settings2, Keyboard, Code, ChevronLeft, X, Key, GitBranch, User } from 'lucide-react'
+import { Settings2, Keyboard, Code, ChevronLeft, X, Key, GitBranch, User, Volume2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useSwipeBack } from '@/hooks/useMobile'
 
@@ -16,7 +17,7 @@ interface SettingsDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
-type SettingsView = 'menu' | 'general' | 'git' | 'shortcuts' | 'opencode' | 'providers' | 'account'
+type SettingsView = 'menu' | 'general' | 'git' | 'shortcuts' | 'opencode' | 'providers' | 'account' | 'voice'
 
 export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [mobileView, setMobileView] = useState<SettingsView>('menu')
@@ -42,6 +43,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const menuItems = [
     { id: 'account', icon: User, label: 'Account', description: 'Profile, passkeys, and sign out' },
     { id: 'general', icon: Settings2, label: 'General Settings', description: 'App preferences and behavior' },
+    { id: 'voice', icon: Volume2, label: 'Voice', description: 'Text-to-speech and speech-to-text settings' },
     { id: 'git', icon: GitBranch, label: 'Git', description: 'Git identity and credentials for repositories' },
     { id: 'shortcuts', icon: Keyboard, label: 'Keyboard Shortcuts', description: 'Customize keyboard shortcuts' },
     { id: 'opencode', icon: Code, label: 'OpenCode Config', description: 'Manage OpenCode configurations, commands, and agents' },
@@ -69,12 +71,15 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           </div>
           <Tabs defaultValue="account" className="w-full flex flex-col flex-1 min-h-0">
             <div className="px-6 pt-6 pb-4 flex-shrink-0">
-              <TabsList className="grid w-full grid-cols-6 bg-card p-1">
+              <TabsList className="grid w-full grid-cols-7 bg-card p-1">
                 <TabsTrigger value="account" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white text-muted-foreground transition-all duration-200">
                   Account
                 </TabsTrigger>
                 <TabsTrigger value="general" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white text-muted-foreground transition-all duration-200">
                   General
+                </TabsTrigger>
+                <TabsTrigger value="voice" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white text-muted-foreground transition-all duration-200">
+                  Voice
                 </TabsTrigger>
                 <TabsTrigger value="git" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white text-muted-foreground transition-all duration-200">
                   Git
@@ -95,6 +100,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               <div className="px-6 pb-6">
                 <TabsContent value="account" className="mt-0"><AccountSettings /></TabsContent>
                 <TabsContent value="general" className="mt-0"><GeneralSettings /></TabsContent>
+                <TabsContent value="voice" className="mt-0"><VoiceSettings /></TabsContent>
                 <TabsContent value="git" className="mt-0"><GitSettings /></TabsContent>
                 <TabsContent value="shortcuts" className="mt-0"><KeyboardShortcuts /></TabsContent>
                 <TabsContent value="opencode" className="mt-0"><OpenCodeConfigManager /></TabsContent>
@@ -156,6 +162,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
             {mobileView === 'account' && <AccountSettings />}
             {mobileView === 'general' && <GeneralSettings />}
+            {mobileView === 'voice' && <VoiceSettings />}
             {mobileView === 'git' && <GitSettings />}
             {mobileView === 'shortcuts' && <KeyboardShortcuts />}
             {mobileView === 'opencode' && <OpenCodeConfigManager />}

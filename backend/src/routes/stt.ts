@@ -14,7 +14,6 @@ type STTConfigExtended = {
   apiKey: string
   model: string
   language: string
-  continuous: boolean
   availableModels?: string[]
   lastModelsFetch?: number
 }
@@ -62,7 +61,7 @@ async function cacheDiscovery(cacheKey: string, data: string[]): Promise<void> {
 
 function generateDiscoveryCacheKey(endpoint: string, apiKey: string, type: 'models'): string {
   const hash = createHash('sha256')
-  hash.update(`stt|${endpoint}|${apiKey.substring(0, 8)}|${type}`)
+  hash.update(`stt|${endpoint}|${apiKey ? apiKey.substring(0, 8) : 'no-key'}|${type}`)
   return hash.digest('hex')
 }
 
@@ -77,7 +76,7 @@ async function fetchAvailableModels(endpoint: string, apiKey: string): Promise<s
     try {
       const response = await fetch(modelEndpoint, {
         headers: {
-          'Authorization': `Bearer ${apiKey}`,
+          ...(apiKey && { 'Authorization': `Bearer ${apiKey}` }),
           'Content-Type': 'application/json',
         },
       })
@@ -142,10 +141,6 @@ export function createSTTRoutes(db: Database) {
         return c.json({ error: 'External STT provider is not selected' }, 400)
       }
 
-      if (!sttConfig.apiKey) {
-        return c.json({ error: 'STT API key is not configured' }, 400)
-      }
-
       if (!sttConfig.endpoint) {
         return c.json({ error: 'STT endpoint is not configured' }, 400)
       }
@@ -166,13 +161,13 @@ export function createSTTRoutes(db: Database) {
         return new Response(null, { status: 499 })
       }
 
-      logger.info(`STT transcription request: model=${model}, language=${language}, size=${audioFile.size}`)
+      logger.info(`STT transcription request: model=${model}, language=${language}, size=${audioFile.size}, type=${audioFile.type}`)
 
       const baseUrl = normalizeToBaseUrl(endpoint)
       const transcriptionEndpoint = `${baseUrl}/v1/audio/transcriptions`
 
       const apiFormData = new FormData()
-      apiFormData.append('file', audioFile, audioFile.name || 'audio.webm')
+      apiFormData.append('file', audioFile, audioFile.name || 'audio.wav')
       apiFormData.append('model', model)
 
       if (language && language !== 'auto') {
@@ -185,7 +180,7 @@ export function createSTTRoutes(db: Database) {
       const response = await fetch(transcriptionEndpoint, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${apiKey}`,
+          ...(apiKey && { 'Authorization': `Bearer ${apiKey}` }),
         },
         body: apiFormData,
         signal: abortController.signal,
@@ -216,9 +211,17 @@ export function createSTTRoutes(db: Database) {
         }, status)
       }
 
-      const result = await response.json() as { text: string }
-      logger.info(`STT transcription successful: ${result.text.substring(0, 50)}...`)
+      const result = await response.json() as { text?: string } & Record<string, unknown>
 
+      if (!result.text || typeof result.text !== 'string') {
+        logger.error('STT API response missing text field:', { result })
+        return c.json({ 
+          error: 'STT API returned invalid response', 
+          details: `Response missing text field. Full response: ${JSON.stringify(result)}` 
+        }, 500)
+      }
+
+      logger.info(`STT transcription successful: ${result.text.substring(0, 50)}...`)
       return c.json({ text: result.text })
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
@@ -238,7 +241,7 @@ export function createSTTRoutes(db: Database) {
       const settings = settingsService.getSettings(userId)
       const sttConfig = settings.preferences.stt as STTConfigExtended | undefined
 
-      if (!sttConfig?.apiKey || !sttConfig?.endpoint) {
+      if (!sttConfig?.endpoint) {
         return c.json({ error: 'STT not configured' }, 400)
       }
 
@@ -282,7 +285,7 @@ export function createSTTRoutes(db: Database) {
 
     return c.json({
       enabled: sttConfig?.enabled || false,
-      configured: !!(sttConfig?.apiKey && sttConfig?.endpoint),
+      configured: !!sttConfig?.endpoint,
       provider: sttConfig?.provider || 'builtin',
       model: sttConfig?.model || 'whisper-1',
     })
