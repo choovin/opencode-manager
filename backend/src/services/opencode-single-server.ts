@@ -185,7 +185,12 @@ class OpenCodeServerManager {
     try {
       process.kill(this.serverPid, 'SIGTERM')
     } catch (error) {
-      logger.warn(`Failed to send SIGTERM to ${this.serverPid}:`, error)
+      const errorCode = error && typeof error === 'object' && 'code' in error ? (error as { code: string }).code : ''
+      if (errorCode === 'ESRCH') {
+        logger.debug(`Process ${this.serverPid} already stopped`)
+      } else {
+        logger.warn(`Failed to send SIGTERM to ${this.serverPid}:`, error)
+      }
     }
     
     await new Promise(r => setTimeout(r, 2000))
@@ -193,7 +198,12 @@ class OpenCodeServerManager {
     try {
       process.kill(this.serverPid, 'SIGKILL')
     } catch (error) {
-      logger.warn(`Failed to send SIGKILL to ${this.serverPid}:`, error)
+      const errorCode = error && typeof error === 'object' && 'code' in error ? (error as { code: string }).code : ''
+      if (errorCode === 'ESRCH') {
+        logger.debug(`Process ${this.serverPid} already stopped`)
+      } else {
+        logger.warn(`Failed to send SIGKILL to ${this.serverPid}:`, error)
+      }
     }
     
     this.serverPid = null

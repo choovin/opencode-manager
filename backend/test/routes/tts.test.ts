@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as fs from 'fs/promises'
 
 vi.mock('fs/promises', () => ({
@@ -78,9 +78,13 @@ describe('TTS Routes', () => {
   })
 
 describe('getCachedAudio', () => {
-    beforeEach(() => {
-      vi.useFakeTimers()
-    })
+     beforeEach(() => {
+       vi.useFakeTimers()
+     })
+
+     afterEach(() => {
+       vi.useRealTimers()
+     })
 
     it('should return cached audio when file exists and is not expired', async () => {
       const cacheKey = 'test-key'

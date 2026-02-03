@@ -1,6 +1,8 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { execSync } from 'child_process'
+import { existsSync } from 'fs'
+import { resolve, dirname } from 'path'
 import type { Database } from 'bun:sqlite'
 import { SettingsService } from '../services/settings'
 import { writeFileContent, readFileContent, fileExists } from '../services/file-operations'
@@ -25,6 +27,27 @@ function compareVersions(v1: string, v2: string): number {
     if (p1 < p2) return -1
   }
   return 0
+}
+
+function getOpenCodeInstallMethod(): string {
+  const homePath = process.env.HOME || ''
+  const opencodePath = process.env.OPENCOD_PATH || resolve(homePath, '.opencode', 'bin', 'opencode')
+  
+  if (!existsSync(opencodePath)) return 'curl'
+  
+  try {
+    const opencodeDir = dirname(opencodePath)
+    if (opencodeDir.includes('.opencode')) return 'curl'
+    
+    if (opencodePath.includes('/homebrew/') || opencodePath.includes('/HOMEBREW/')) return 'brew'
+    if (opencodePath.includes('/.npm/') || opencodePath.includes('/node_modules/')) return 'npm'
+    if (opencodePath.includes('/.pnpm/')) return 'pnpm'
+    if (opencodePath.includes('/.bun/')) return 'bun'
+  } catch {
+    return 'curl'
+  }
+  
+  return 'curl'
 }
 
 function execWithTimeout(command: string, timeoutMs: number): { output: string; timedOut: boolean } {
@@ -396,8 +419,9 @@ export function createSettingsRoutes(db: Database) {
     logger.info(`Current OpenCode version: ${oldVersion}`)
 
     try {
-      logger.info('Running opencode upgrade with 90s timeout...')
-      const { output: upgradeOutput, timedOut } = execWithTimeout('opencode upgrade 2>&1', 90000)
+      const installMethod = getOpenCodeInstallMethod()
+      logger.info(`Running opencode upgrade --method ${installMethod} with 90s timeout...`)
+      const { output: upgradeOutput, timedOut } = execWithTimeout(`opencode upgrade --method ${installMethod} 2>&1`, 90000)
       logger.info(`Upgrade output: ${upgradeOutput}`)
 
       if (timedOut) {
@@ -546,9 +570,10 @@ export function createSettingsRoutes(db: Database) {
 
       logger.info(`Installing OpenCode version: ${version}`)
       const versionArg = version.startsWith('v') ? version : `v${version}`
-      logger.info(`Running opencode upgrade ${versionArg} with 90s timeout...`)
+      const installMethod = getOpenCodeInstallMethod()
+      logger.info(`Running opencode upgrade ${versionArg} --method ${installMethod} with 90s timeout...`)
 
-      const { output: upgradeOutput, timedOut } = execWithTimeout(`opencode upgrade ${versionArg} 2>&1`, 90000)
+      const { output: upgradeOutput, timedOut } = execWithTimeout(`opencode upgrade ${versionArg} --method ${installMethod} 2>&1`, 90000)
       logger.info(`Upgrade output: ${upgradeOutput}`)
 
       if (timedOut) {

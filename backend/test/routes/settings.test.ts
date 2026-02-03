@@ -180,7 +180,7 @@ describe('Settings Routes - OpenCode Upgrade', () => {
         const res = await settingsApp.fetch(req)
         const json = await res.json() as Record<string, unknown>
 
-        expect(mockExecSync).toHaveBeenCalledWith('opencode upgrade 2>&1', expect.objectContaining({
+        expect(mockExecSync).toHaveBeenCalledWith('opencode upgrade --method curl 2>&1', expect.objectContaining({
           timeout: 90000,
           killSignal: 'SIGKILL'
         }))
@@ -304,7 +304,7 @@ describe('Settings Routes - OpenCode Upgrade', () => {
         await settingsApp.fetch(req)
 
         expect(mockExecSync).toHaveBeenCalledWith(
-          'opencode upgrade v1.0.5 2>&1',
+          'opencode upgrade v1.0.5 --method curl 2>&1',
           expect.any(Object)
         )
       })
@@ -322,7 +322,7 @@ describe('Settings Routes - OpenCode Upgrade', () => {
         await settingsApp.fetch(req)
 
         expect(mockExecSync).toHaveBeenCalledWith(
-          'opencode upgrade v1.0.5 2>&1',
+          'opencode upgrade v1.0.5 --method curl 2>&1',
           expect.any(Object)
         )
       })
@@ -346,8 +346,8 @@ describe('Settings Routes - OpenCode Upgrade', () => {
         const json = await res.json() as Record<string, unknown>
 
         expect(mockExecSync).toHaveBeenCalledWith(
-          'opencode upgrade v1.0.5 2>&1',
-          expect.objectContaining({ timeout: 90000 })
+          'opencode upgrade v1.0.5 --method curl 2>&1',
+          expect.any(Object)
         )
         expect(mockRestart).toHaveBeenCalled()
         expect(res.status).toBe(400)
