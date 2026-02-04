@@ -1,30 +1,7 @@
-FROM node:24.13.0 AS base
+FROM node:24.13.0-alpine AS base
 
-RUN apt-get update && apt-get install -y \
-    git \
-    curl \
-    lsof \
-    ripgrep \
-    ca-certificates \
-    grep \
-    gawk \
-    sed \
-    findutils \
-    coreutils \
-    procps \
-    jq \
-    less \
-    tree \
-    file \
-    python3 \
-    python3-pip \
-    python3-venv \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
-  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
-  && apt-get update && apt-get install -y gh \
-  && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache git curl python3 py3-pip bash && \
+    rm -rf /var/cache/apk/*
 
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
@@ -37,12 +14,13 @@ WORKDIR /app
 
 FROM base AS deps
 
-COPY --chown=node:node package.json pnpm-workspace.yaml pnpm-lock.yaml ./
-COPY --chown=node:node shared/package.json ./shared/
-COPY --chown=node:node backend/package.json ./backend/
-COPY --chown=node:node frontend/package.json ./frontend/
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY shared/package.json ./shared/
+COPY backend/package.json ./backend/
+COPY frontend/package.json ./frontend/
 
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile --prod=false && \
+    rm -rf /root/.pnpm-store
 
 FROM base AS builder
 
@@ -55,16 +33,16 @@ COPY frontend/index.html frontend/vite.config.ts frontend/tsconfig*.json fronten
 
 RUN pnpm --filter frontend build
 
-FROM base AS runner
+FROM node:24.13.0-alpine AS runner
 
 ARG UV_VERSION=latest
 ARG OPENCODE_VERSION=latest
 
-RUN echo "Installing uv=${UV_VERSION} opencode=${OPENCODE_VERSION}" && \
+RUN apk add --no-cache git curl python3 bash ripgrep jq less tree lsof procps && \
     curl -LsSf https://astral.sh/uv/install.sh | UV_NO_MODIFY_PATH=1 sh && \
     mv /root/.local/bin/uv /usr/local/bin/uv && \
     mv /root/.local/bin/uvx /usr/local/bin/uvx && \
-    chmod +x /usr/local/bin/uv /usr/local/bin/uvx && \
+    rm -rf /root/.local/bin/uv* && \
     if [ "${OPENCODE_VERSION}" = "latest" ]; then \
         curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path; \
     else \
@@ -72,7 +50,8 @@ RUN echo "Installing uv=${UV_VERSION} opencode=${OPENCODE_VERSION}" && \
     fi && \
     mv /root/.opencode /opt/opencode && \
     chmod -R 755 /opt/opencode && \
-    ln -s /opt/opencode/bin/opencode /usr/local/bin/opencode
+    ln -s /opt/opencode/bin/opencode /usr/local/bin/opencode && \
+    rm -rf /var/cache/apk/*
 
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
@@ -88,7 +67,8 @@ COPY --from=builder /app/frontend/dist ./frontend/dist
 COPY package.json pnpm-workspace.yaml ./
 
 RUN mkdir -p /app/backend/node_modules/@opencode-manager && \
-    ln -s /app/shared /app/backend/node_modules/@opencode-manager/shared
+    ln -s /app/shared /app/backend/node_modules/@opencode-manager/shared && \
+    rm -rf /app/node_modules/.cache /root/.cache
 
 COPY scripts/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
@@ -99,10 +79,9 @@ RUN mkdir -p /workspace /app/data && \
 EXPOSE 5003 5100 5101 5102 5103
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-  CMD curl -f http://localhost:5003/api/health || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://localhost:5003/api/health || exit 1
 
 USER node
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["bun", "backend/src/index.ts"]
-
